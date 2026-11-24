@@ -1,0 +1,37 @@
+.arbor-login-shell {
+  background: #eeedf8;
+  color: #262347;
+  box-shadow: 0 20px 48px -28px rgb(46 41 99 / 0.28);
+}
+
+.arbor-login-watermark {
+  bottom: -11.75rem;
+  left: -10.75rem;
+  width: 41rem;
+}
+
+.arbor-login-imprint {
+  color: #e2e0f2;
+  filter: drop-shadow(-1px -2px 1px rgb(81 76 143 / 0.22))
+    drop-shadow(1px 2px 0 rgb(255 255 255 / 0.82));
+}
+
+.arbor-login-subtitle { color: #55516e; }
+
+.arbor-login-glint { display: none; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .arbor-login-glint {
+    display: block;
+    color: rgb(255 255 255 / 0.45);
+    mask-image: linear-gradient(115deg, transparent 38%, black 50%, transparent 62%);
+    mask-size: 260% 100%;
+    animation: arbor-login-glint 1.25s 160ms ease-out both;
+  }
+}
+
+@keyframes arbor-login-glint {
+  from { mask-position: 100% 0; opacity: 0; }
+  24%, 65% { opacity: 1; }
+  to { mask-position: 0 0; opacity: 0; }
+}

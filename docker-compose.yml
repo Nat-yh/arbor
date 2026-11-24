@@ -1,0 +1,67 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-arbor}
+      POSTGRES_USER: ${POSTGRES_USER:-arbor}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    # No published database port; app connects using the service hostname "db".
+
+  app:
+    image: ${APP_IMAGE:-arbor:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env (use db as hostname for bundled PostgreSQL)}
+      APP_BASE_URL: ${APP_BASE_URL:?Set APP_BASE_URL in .env}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Shanghai}
+      DEMO_MODE: ${DEMO_MODE:-false}
+      LOCAL_AUTH_ENABLED: ${LOCAL_AUTH_ENABLED:-false}
+      LOCAL_AUTH_SETUP_TOKEN: ${LOCAL_AUTH_SETUP_TOKEN:-}
+      FEISHU_APP_ID: ${FEISHU_APP_ID:-}
+      FEISHU_APP_SECRET: ${FEISHU_APP_SECRET:-}
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
+      GITLAB_WEBHOOK_SECRET: ${GITLAB_WEBHOOK_SECRET:-}
+      GITEE_WEBHOOK_SECRET: ${GITEE_WEBHOOK_SECRET:-}
+      GITEA_WEBHOOK_SECRET: ${GITEA_WEBHOOK_SECRET:-}
+      RUN_SCHEDULER: ${RUN_SCHEDULER:-false}
+      SKIP_MIGRATE: ${SKIP_MIGRATE:-false}
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+      TZ: ${TZ:-Asia/Shanghai}
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+    ports:
+      - "${APP_BIND_HOST:-127.0.0.1}:${APP_PORT:-3000}:3000"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# External database: remove app.depends_on and the db service, then set
+# DATABASE_URL to the external PostgreSQL URL. The unused volume can remain.
+# Do not use `down -v` to switch databases: it deletes the local database volume.
+volumes:
+  postgres_data:

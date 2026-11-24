@@ -1,0 +1,1 @@
+ALTER TABLE "accounts" ADD COLUMN "repo_logins" jsonb DEFAULT '{}'::jsonb NOT NULL;

@@ -1,0 +1,666 @@
+@import "tailwindcss" source("../");
+
+/*
+ * Arbor 设计 token
+ * 中性底 + 一个品牌主色（靛蓝）+ 语义状态色。新代码只用这些语义名，不再直接写 zinc/emerald 等色阶。
+ */
+@theme {
+  /* 表面与线条 */
+  --color-canvas: #f7f7f8;
+  --color-surface: #ffffff;
+  --color-sunken: #f2f2f4;
+  --color-hover: rgb(15 15 30 / 0.045);
+  --color-active: rgb(15 15 30 / 0.07);
+  --color-line: rgb(15 15 30 / 0.08);
+  --color-line-strong: rgb(15 15 30 / 0.14);
+  --color-focus: var(--color-accent);
+
+  /* 文字 */
+  --color-fg: #1b1b21;
+  --color-fg-2: #4a4a55;
+  --color-fg-3: #7c7c88;
+  --color-fg-4: #a8a8b3;
+
+  /* 品牌主色 */
+  --color-accent: oklch(0.53 0.2 272);
+  --color-accent-hover: oklch(0.48 0.2 272);
+  --color-accent-soft: oklch(0.955 0.025 272);
+  --color-accent-fg: oklch(0.45 0.18 272);
+
+  /* 语义状态色 */
+  --color-st-todo: #a1a1ab;
+  --color-st-doing: oklch(0.74 0.16 70);
+  --color-st-review: oklch(0.58 0.2 272);
+  --color-st-done: oklch(0.63 0.15 155);
+  --color-st-blocked: oklch(0.6 0.21 25);
+  --color-st-cancelled: #c4c4cc;
+
+  --color-danger: oklch(0.57 0.21 25);
+  --color-danger-soft: oklch(0.97 0.018 25);
+  --color-warn: oklch(0.62 0.15 60);
+  --color-warn-soft: oklch(0.975 0.03 80);
+  --color-ok: oklch(0.56 0.14 155);
+  --color-ok-soft: oklch(0.97 0.025 155);
+
+  --shadow-pop: 0 0 0 1px rgb(15 15 30 / 0.06), 0 4px 12px -2px rgb(15 15 30 / 0.1), 0 12px 32px -8px rgb(15 15 30 / 0.14);
+  --shadow-panel: 0 0 0 1px rgb(15 15 30 / 0.06), -12px 0 40px -12px rgb(15 15 30 / 0.18);
+}
+
+@theme inline {
+  --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  --animate-fade-up: fade-up 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-fade-in: fade-in 0.15s ease-out both;
+  --animate-pop: pop 0.18s cubic-bezier(0.2, 1, 0.4, 1) both;
+  --animate-toast: toast-in 0.24s cubic-bezier(0.2, 1, 0.3, 1) both;
+  --animate-slide-in: slide-in 0.22s cubic-bezier(0.2, 0.9, 0.25, 1) both;
+  --animate-pulse-ring: pulse-ring 1.6s ease-out infinite;
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes pop {
+  from { transform: scale(0.96); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes slide-in {
+  from { opacity: 0.4; transform: translateX(24px); }
+  to { opacity: 1; transform: none; }
+}
+/* Motion stays on the surface and does not affect the hit area. */
+.arbor-control,
+:where(button, summary, [role="button"]) {
+  transition-property: background-color, border-color, color, filter;
+  transition-duration: 135ms;
+  transition-timing-function: ease-out;
+}
+:where(button, summary, [role="button"]):not(:disabled, [aria-disabled="true"]):active {
+  filter: brightness(.94);
+}
+.arbor-control:is([data-state="open"], [aria-expanded="true"]):not(.arbor-primary) {
+  background-color: var(--color-active);
+}
+.arbor-primary {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+.arbor-primary:has(> .action-feedback)::before,
+.arbor-primary:has(> .action-feedback)::after { visibility: hidden; }
+.arbor-primary::before,
+.arbor-primary::after {
+  content: "";
+  position: absolute;
+  inset: 0 -20% 0 0;
+  z-index: -1;
+  pointer-events: none;
+  background-color: var(--color-accent-hover);
+  clip-path: ellipse(105% 155% at 0% 52%);
+  opacity: 0;
+  transform: translate3d(-100%, 0, 0);
+  transition: transform 405ms cubic-bezier(.35,.14,.28,1), opacity 405ms;
+}
+.arbor-primary::before {
+  background-color: color-mix(in oklab, var(--color-accent-hover) 86%, white);
+  clip-path: ellipse(108% 165% at 0% 48%);
+  transition-delay: 16ms;
+}
+.arbor-primary:not(:disabled, [aria-disabled="true"]):is(:hover, :focus-visible)::before,
+.arbor-primary:not(:disabled, [aria-disabled="true"]):is(:hover, :focus-visible)::after {
+  transform: translate3d(0, 0, 0);
+  opacity: 1;
+}
+.arbor-primary:not(:disabled, [aria-disabled="true"]):is(:hover, :focus-visible)::before { transition-delay: 0s }
+.arbor-primary:not(:disabled, [aria-disabled="true"]):is(:hover, :focus-visible)::after { transition-delay: 16ms }
+
+.arbor-menu[data-side] {
+  transform-origin: var(--radix-dropdown-menu-content-transform-origin, var(--radix-popover-content-transform-origin, center));
+  animation: menu-enter 140ms cubic-bezier(.22,.68,.2,1) both;
+}
+.arbor-menu-item { transition: background-color 80ms ease-out, color 80ms ease-out; }
+@keyframes menu-enter {
+  from { opacity: 0; transform: scale(.975) }
+  to { opacity: 1; transform: scale(1) }
+}
+
+.selection-motion { position: relative; isolation: isolate; }
+.selection-liquid {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  z-index: -1;
+  fill: var(--color-accent-soft);
+}
+.selection-motion[data-axis="y"] > .selection-liquid { fill: var(--color-active); }
+.selection-motion > [data-selection-value] { user-select: none; }
+.selection-motion[data-axis="x"] > [data-selection-value] { border-radius: 9999px; }
+.selection-motion[data-axis="x"] > :is([aria-selected="true"], [aria-pressed="true"]) {
+  touch-action: pan-y pinch-zoom;
+}
+.selection-motion[data-selection-dragging] > [data-selection-value] { cursor: grabbing; }
+@media (hover: hover) and (pointer: fine) {
+  .selection-motion:not([data-selection-dragging]) > [data-selection-value]:is([aria-selected="true"], [aria-pressed="true"], [aria-current="page"]) { cursor: grab; }
+}
+.selection-segment { border-radius: 9999px; }
+.selection-segment > .selection-liquid {
+  fill: var(--color-surface);
+  filter: drop-shadow(0 1px 1px rgb(15 15 30 / .08));
+}
+
+/* The confirmed label overlays the original button so its width stays stable. */
+button:has(> .action-feedback) {
+  position: relative;
+  isolation: isolate;
+  opacity: 1;
+}
+.action-feedback {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  border-radius: inherit;
+  pointer-events: none;
+  background: var(--color-accent);
+  color: white;
+
+}
+.action-feedback--start, .action-feedback--submit, .action-feedback--ripple,
+.action-feedback--complete, .action-feedback--danger {
+  --feedback-color: var(--color-accent);
+  isolation: isolate;
+  overflow: hidden;
+  background: var(--color-accent-hover);
+}
+.action-feedback--start::before, .action-feedback--submit::before, .action-feedback--ripple::before,
+.action-feedback--complete::before, .action-feedback--danger::before {
+  content: "";
+  position: absolute;
+  inset: 0 -25% 0 0;
+  z-index: -1;
+  background: linear-gradient(105deg, var(--feedback-color), color-mix(in oklab,var(--feedback-color) 70%,white));
+  clip-path: ellipse(94% 160% at 3% 50%);
+  animation: action-start-sweep 440ms cubic-bezier(.22,.66,.3,1) both;
+}
+.action-feedback--start .action-feedback-label svg,
+.action-feedback--submit .action-feedback-label svg,
+.action-feedback--ripple .action-feedback-label svg {
+  animation: action-start-check 320ms cubic-bezier(.2,.8,.28,1) both;
+}
+@keyframes action-start-sweep {
+  from { transform: translateX(-100%); }
+  70% { opacity: 1; }
+  to { transform: translateX(0); opacity: 0; }
+}
+@keyframes action-start-check {
+  0% { transform: scale(.65); opacity: .35; }
+  56% { transform: scale(1.19); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.action-feedback--complete {
+  --feedback-color: var(--color-ok);
+  background: var(--feedback-color);
+}
+.action-feedback--danger {
+  --feedback-color: var(--color-danger);
+  background: var(--feedback-color);
+}
+.action-feedback-label {
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
+  white-space: nowrap;
+  animation: action-confirm 120ms ease-out both;
+}
+.action-burst-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overflow: clip;
+  pointer-events: none;
+}
+.action-burst-origin { position: absolute; }
+.action-burst-check {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border: 1px solid var(--color-surface);
+  border-radius: 50%;
+  background: var(--color-ok);
+  color: white;
+  box-shadow: 0 1px 3px rgb(15 15 30 / .18);
+  translate: 35% -35%;
+  animation: action-burst-check 580ms cubic-bezier(.2,.75,.3,1) both;
+}
+.action-burst-check svg { width: 12px; height: 12px; }
+.action-burst-layer--danger .action-burst-check,
+.action-burst-layer--danger .action-particle { background: var(--color-danger); }
+.action-burst-layer--ripple .action-particle { background: var(--color-accent); }
+@keyframes action-burst-check {
+  0% { transform: scale(.55); opacity: 0; }
+  25% { transform: scale(1.12); opacity: 1; }
+  40%, 75% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(.9); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .action-burst-check { animation: none; }
+}
+.action-particle {
+  position: absolute;
+  left: var(--particle-x);
+  top: var(--particle-y);
+  width: var(--particle-size);
+  height: calc(var(--particle-size) * .65);
+  border-radius: 50%;
+  background: var(--color-st-done);
+  animation: action-burst 510ms cubic-bezier(.2,.65,.32,1) both;
+}
+@keyframes action-confirm {
+  from { opacity: .75 }
+  to { opacity: 1 }
+}
+@keyframes action-burst {
+  0% { transform: translate(-50%, -50%) scale(.65); opacity: 0 }
+  16%, 50% { opacity: 1 }
+  100% { transform: translate(calc(-50% + var(--particle-dx)), calc(-50% + var(--particle-dy))) scale(.55); opacity: 0 }
+}
+@media (prefers-reduced-motion: reduce) {
+  .arbor-primary::before, .arbor-primary::after { transition-delay: 0s }
+  .action-particle, .action-feedback::before { display: none }
+}
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 oklch(0.53 0.2 272 / 0.3); }
+  70% { box-shadow: 0 0 0 6px oklch(0.53 0.2 272 / 0); }
+  100% { box-shadow: 0 0 0 0 oklch(0.53 0.2 272 / 0); }
+}
+
+/* 始终预留滚动条位置：对话框锁定滚动时页面和抽屉不横向跳动 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-fg-4) 60%, transparent) transparent;
+}
+html {
+  scrollbar-gutter: stable;
+}
+/* 已经预留了滚动条位置，Radix 对话框锁滚动时不再额外补 margin，否则内容会收窄一条 */
+html body[data-scroll-locked] {
+  margin-right: 0 !important;
+}
+body {
+  font-family: var(--font-sans);
+  background: var(--color-canvas);
+  color: var(--color-fg);
+}
+::selection {
+  background: oklch(0.85 0.08 272);
+}
+:focus { outline: none; }
+/* 键盘焦点用控件内的底线，避免给整个编辑区或抽屉再套一层框。 */
+:where(button, a[href], summary, input[type="checkbox"], input[type="radio"], [role="button"], [role="tab"], [role="switch"]):focus-visible {
+  box-shadow: inset 0 -2px color-mix(in oklab, currentColor 70%, transparent);
+}
+.person-picker-option:focus-visible,
+.arbor-menu-item:focus-visible {
+  box-shadow: none;
+  background-color: var(--color-active);
+}
+
+/* 列表项依次淡入（仅首次出现） */
+.stagger > * {
+  animation: fade-up 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.stagger > *:nth-child(2) { animation-delay: 20ms; }
+.stagger > *:nth-child(3) { animation-delay: 40ms; }
+.stagger > *:nth-child(4) { animation-delay: 60ms; }
+.stagger > *:nth-child(n + 5) { animation-delay: 80ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* 飞书手机入口：树卡片及始终可见的下一步，桌面沿用原布局。 */
+.work-tree-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem;
+}
+.work-tree-add-name { flex: 1 0 100%; }
+
+.work-timeline { --timeline-name-width: clamp(8.25rem, 35cqw, 14rem); }
+.work-timeline-name {
+  align-self: stretch;
+  width: var(--timeline-name-width);
+  flex: none;
+  border-inline-end: 1px solid var(--color-line);
+}
+.work-timeline-row:hover .work-timeline-name {
+  background-image: linear-gradient(var(--color-hover), var(--color-hover));
+}
+
+@container (min-width: 54rem) {
+  .dashboard-layout-split { grid-template-columns: minmax(0, 1.9fr) minmax(17rem, 1fr); }
+}
+.dashboard-queue-actions:empty { display: none; }
+
+@media (hover: hover) and (pointer: fine) {
+  .dashboard-queue-meta:has(.dashboard-queue-actions > button) { min-height: 1.75rem; }
+  .dashboard-queue-row:not(:hover):not(:focus-within) .dashboard-queue-actions {
+    inline-size: 0;
+    overflow: clip;
+  }
+  .dashboard-queue-actions > button,
+  .dashboard-attention-actions > button {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .dashboard-queue-row:is(:hover, :focus-within) .dashboard-queue-actions > button,
+  .dashboard-attention-row:is(:hover, :focus-within) .dashboard-attention-actions > button {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .work-tree-row:not(:hover) .work-tree-sort-handle:not(:focus-visible):not([data-state="open"]) {
+    opacity: 0;
+  }
+
+  .work-tree-row:not(:hover) .row-edit:not(:focus-visible) {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .work-tree-row:not(:hover):not(:focus-within) .work-tree-unplanned:not([data-state="open"]) {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
+.work-tree-row[data-drag-shift] {
+  transform: translateY(var(--drag-offset, 0px));
+  transition: transform 160ms cubic-bezier(0.2, 0.75, 0.25, 1);
+}
+.work-tree-row[data-drag-placeholder],
+.work-tree-row[data-transfer-target] {
+  background: var(--color-accent-soft);
+}
+.work-tree-row[data-drag-placeholder] {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent-fg) 35%, transparent);
+}
+.work-tree-row[data-drag-placeholder] > * { opacity: 0; }
+.work-tree-row[data-transfer-target] { box-shadow: inset 0 0 0 2px var(--color-accent-fg); }
+@media (prefers-reduced-motion: reduce) {
+  .work-tree-row[data-drag-shift] { transition: none; }
+}
+
+.work-tree-columns.with-iteration { --work-tree-iteration-column: 5.5rem; }
+.work-tree-columns {
+  grid-template-columns: minmax(0, 1fr) var(--work-tree-iteration-column,) 3.375rem;
+}
+@container (min-width: 48rem) {
+  .work-tree-columns {
+    grid-template-columns: minmax(0, 1fr) var(--work-tree-iteration-column,) 112px 80px 88px 36px 56px;
+  }
+  .work-tree-add { display: grid; column-gap: .75rem; }
+  .work-tree-add-name { padding-inline-start: min(var(--add-indent), 3rem); }
+}
+@media (max-width: 767px) {
+  .work-tree-row { display: block; padding-top: 12px; padding-bottom: 12px; }
+  .work-tree-row.with-iteration { display: grid; }
+  .work-tree-row.with-iteration .work-tree-main { grid-column: 1 / -1; }
+  .work-tree-row.with-iteration .work-tree-iteration { grid-column: 2; }
+  .work-tree-row.with-iteration .work-tree-actions { grid-column: 3; }
+  .work-tree-main { flex-wrap: wrap; padding-left: min(var(--tree-indent, 0px), 32px) !important; }
+  .item-next-step.has-actions { position: fixed; inset: auto 0 0; z-index: 35; margin: 0; border-radius: 12px 12px 0 0; max-height: 55dvh; overflow-y: auto; padding-bottom: max(12px, env(safe-area-inset-bottom)); background: var(--color-surface); box-shadow: 0 -4px 16px rgb(15 15 30 / 8%); }
+  .item-next-step.has-actions .next-step-icon { display: none; }
+  .item-next-step.has-actions .next-step-description { display: none; }
+  .next-step-actions:has(> :nth-child(2)) { width: 100%; }
+  .next-step-actions:has(> :nth-child(2)) > button { flex: 1; }
+}
+
+/* Draw outside the target's scroll container so the ring cannot be clipped. */
+.practice-spotlight {
+  position: fixed;
+  z-index: 44;
+  pointer-events: none;
+  border-radius: 8px;
+  box-shadow: 0 0 0 2px var(--color-accent), 0 0 0 200vmax rgb(15 15 30 / 20%);
+}
+[data-guide-highlight="true"] { scroll-margin: 70px; }
+.practice-coach[data-anchored="true"] button:has(.lucide-crosshair) { display: none; }
+[data-guide-practice="true"] .item-peek { top: 48px; }
+[data-guide-practice="true"] .practice-workspace > div > aside { top: 40px; height: calc(100dvh - 40px); }
+@media (min-width: 768px) {
+  [data-guide-practice="true"] .item-peek { max-width: min(760px, calc(100vw - 256px)); }
+}
+@media (max-width: 767px) {
+  [data-guide-practice="true"] .practice-workspace > div > aside { height: auto; }
+  [data-guide-practice="true"] .app-toasts { top: max(56px, env(safe-area-inset-top)); }
+}
+
+/* The approved preview moves a clipped face over a fixed hit area. */
+.arbor-control.liquid-button {
+  position: relative;
+  isolation: isolate;
+  overflow: visible;
+  background: transparent;
+  box-shadow: none;
+  padding-inline: 0;
+  --liquid-base: var(--color-accent-soft);
+  --liquid-ink: var(--color-accent-fg);
+  --liquid-end: var(--color-accent-hover);
+  --liquid-front: color-mix(in oklab,var(--liquid-end) 52%,var(--liquid-base));
+}
+.arbor-control.liquid-success {
+  --liquid-base: var(--color-ok-soft);
+  --liquid-ink: var(--color-ok);
+  --liquid-end: var(--color-ok);
+}
+.arbor-control.liquid-danger {
+  --liquid-base: var(--color-danger-soft);
+  --liquid-ink: var(--color-danger);
+  --liquid-end: var(--color-danger);
+}
+.arbor-control.form-trigger {
+  --trigger-tint: var(--color-accent-soft);
+  --trigger-ink: var(--color-accent-fg);
+}
+.arbor-control.form-trigger-warning {
+  --trigger-tint: var(--color-danger-soft);
+  --trigger-ink: var(--color-danger);
+}
+.arbor-control.form-trigger-accent {
+  background: var(--trigger-tint);
+  color: var(--trigger-ink);
+}
+.arbor-control.form-trigger:not(:disabled):is(:hover, [aria-expanded="true"]) {
+  background: var(--trigger-tint);
+  color: var(--trigger-ink);
+}
+.arbor-control.form-trigger:not(:disabled):active {
+  background: color-mix(in oklab, var(--trigger-tint) 87%, var(--trigger-ink));
+}
+.form-entry { animation: fade-in 140ms ease-out both; }
+.liquid-button.arbor-primary::before,
+.liquid-button.arbor-primary::after { content: none; }
+.liquid-button-face {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--liquid-ink);
+  padding-inline: var(--liquid-padding, .75rem);
+  align-self: stretch;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  background: var(--liquid-base);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab,var(--liquid-end) 24%,transparent);
+  transition: transform 280ms cubic-bezier(.25,.75,.25,1);
+}
+.liquid-button.h-7 { --liquid-padding: .625rem; }
+.liquid-button-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .375rem;
+}
+.liquid-button-face::before,
+.liquid-button-fill {
+  position: absolute;
+  inset: 0 -24% 0 0;
+  pointer-events: none;
+  clip-path: ellipse(92% 155% at 3% 52%);
+  transform: translate3d(-100%,0,0);
+}
+.liquid-button-face::before,
+.liquid-button-fill,
+.liquid-button-fill > .liquid-button-label {
+  transition: transform 720ms cubic-bezier(.35,.14,.28,1);
+}
+.liquid-button-face::before {
+  content: "";
+  z-index: -1;
+  clip-path: ellipse(94% 165% at 3% 48%);
+  background: var(--liquid-front);
+  transition-delay: 20ms;
+}
+.liquid-button-fill { z-index: 1; background: var(--liquid-end); color: white; }
+.liquid-button-fill > .liquid-button-label {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(100% / 1.24);
+  transform: translate3d(124%,0,0);
+}
+.liquid-button:not(:disabled):is(:hover,:focus-visible,:active) .liquid-button-face {
+  transform: scale(1);
+}
+.liquid-button:not(:disabled):is(:hover,:focus-visible,:active) .liquid-button-face::before,
+.liquid-button:not(:disabled):is(:hover,:focus-visible,:active) .liquid-button-fill,
+.liquid-button:not(:disabled):is(:hover,:focus-visible,:active) .liquid-button-fill > .liquid-button-label {
+  transform: translate3d(0,0,0);
+}
+.liquid-button:not(:disabled):is(:hover,:focus-visible,:active) .liquid-button-face::before { transition-delay: 0s; }
+.liquid-button:not(:disabled):is(:hover,:focus-visible,:active) .liquid-button-fill,
+.liquid-button:not(:disabled):is(:hover,:focus-visible,:active) .liquid-button-fill > .liquid-button-label { transition-delay: 20ms; }
+.liquid-button:not(:disabled):active .liquid-button-face {
+  transform: scale(.98);
+  transition-duration: 110ms;
+}
+.action-feedback--publish { background: var(--color-ok); }
+.action-burst-layer--publish .action-particle { background: var(--color-accent); }
+.action-burst-layer--publish .action-particle:nth-child(3n) { background: var(--color-ok); }
+.action-burst-layer--start .action-particle, .action-burst-layer--submit .action-particle { background: var(--color-accent); }
+.action-burst-layer--start .action-particle:nth-child(3n), .action-burst-layer--submit .action-particle:nth-child(3n) { background: var(--color-accent-hover); }
+@media (prefers-reduced-motion: reduce) {
+  .liquid-button .liquid-button-face { transform: none !important; }
+  .liquid-button .liquid-button-face::before,
+  .liquid-button .liquid-button-fill,
+  .liquid-button .liquid-button-fill > .liquid-button-label { transition-delay: 0s !important; }
+}
+
+.arbor-dialog[data-state="open"] {
+  animation: dialog-enter 200ms cubic-bezier(.22,.72,.26,1) both;
+}
+.arbor-dialog[data-state="closed"] {
+  pointer-events: none;
+  animation: dialog-exit 145ms ease-in both;
+}
+.arbor-overlay[data-state="open"] { animation: overlay-enter 185ms ease-out both; }
+.arbor-overlay[data-state="closed"] { animation: overlay-exit 145ms ease-in both; }
+.arbor-image-viewer[data-state="open"] { animation: overlay-enter 200ms ease-out both; }
+.arbor-image-viewer[data-state="closed"] { animation: overlay-exit 145ms ease-in both; }
+.arbor-menu:is([data-state="closed"], [data-state="delayed-closed"]) {
+  pointer-events: none;
+  animation: menu-exit 110ms ease-in both;
+}
+/* Render feedback only when a navigation is slow enough to need it. */
+.arbor-page-loading { animation: fade-in 140ms ease-out 220ms both; }
+@supports not selector(::view-transition-new(*)) {
+  .arbor-page-enter { position: relative; animation: page-enter 240ms cubic-bezier(.2,.72,.25,1) backwards; }
+}
+/* Keep the sidebar and page frame steady during directional menu changes. */
+::view-transition-old(root) { display: none; }
+::view-transition-new(root),
+::view-transition-group(root) { animation: none; }
+
+/* Both snapshots move within the same group without interpolating its size. */
+::view-transition-group(.menu-down),
+::view-transition-group(.menu-up) { animation: none; }
+
+::view-transition-old(.menu-down),
+::view-transition-new(.menu-up) { --menu-offset: -16px; }
+::view-transition-old(.menu-up),
+::view-transition-new(.menu-down) { --menu-offset: 16px; }
+
+::view-transition-old(.menu-down),
+::view-transition-old(.menu-up) {
+  animation: menu-page-out 240ms cubic-bezier(.22,.61,.36,1) both;
+}
+::view-transition-new(.menu-down),
+::view-transition-new(.menu-up) {
+  animation: menu-page-in 240ms cubic-bezier(.22,.61,.36,1) both;
+}
+@keyframes menu-page-out {
+  from { opacity: 1; }
+  to { opacity: 0; transform: translateY(var(--menu-offset)); }
+}
+@keyframes menu-page-in {
+  from { opacity: 0; transform: translateY(var(--menu-offset)); }
+  to { opacity: 1; transform: none; }
+}
+.arbor-drawer[data-state="open"] { animation: drawer-enter 300ms cubic-bezier(.22,.72,.26,1) backwards; }
+.arbor-drawer[data-state="closed"] { pointer-events: none; animation: drawer-exit 220ms cubic-bezier(.55,.05,.75,.45) both; }
+@keyframes dialog-enter {
+  from { opacity: 0; transform: translateY(9px) scale(.975); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes dialog-exit {
+  to { opacity: 0; transform: translateY(5px) scale(.985); }
+}
+@keyframes overlay-enter { from { opacity: 0; } to { opacity: 1; } }
+@keyframes overlay-exit { from { opacity: 1; } to { opacity: 0; } }
+@keyframes menu-exit { to { opacity: 0; transform: scale(.985); } }
+@keyframes page-enter {
+  from { opacity: 0; top: 7px; }
+  to { opacity: 1; top: 0; }
+}
+@keyframes drawer-enter {
+  from { translate: calc(100% + 12px) 0; }
+  to { translate: none; }
+}
+@keyframes drawer-exit {
+  to { translate: calc(100% + 12px) 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .arbor-page-enter, .arbor-drawer[data-state="open"] { animation: none; }
+  ::view-transition-old(.menu-down), ::view-transition-old(.menu-up),
+  ::view-transition-new(.menu-down), ::view-transition-new(.menu-up) { animation-duration: 1ms; }
+  .arbor-drawer[data-state="closed"] {
+    visibility: hidden;
+    animation: drawer-exit 1ms both;
+  }
+}
