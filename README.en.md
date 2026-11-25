@@ -8,7 +8,7 @@ Arbor is a self-hosted tool for software teams to plan, track, review, and relea
 
 ## Highlights
 
-- Roll up progress by effort and flag blockers on parent work items.
+- View progress and blockers in the list, timeline, or delivery board.
 - Keep deliverables, sign-offs, and requests for changes on the work item.
 - Link PRs and MRs and sync supported review and test results.
 - Track test sign-off, deployment records, and production verification.

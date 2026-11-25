@@ -250,6 +250,18 @@ export function iterationPhase(it: Iteration, asOf = today()): IterationPhase {
   return asOf > it.end ? "overdue" : "active";
 }
 
+export type CurrentWorkGroup = "ongoing" | "unplanned" | "followUp" | "planned";
+
+export function currentWorkGroup(items: Items, item: WorkItem, asOf = today()): CurrentWorkGroup | undefined {
+  const iteration = iterationOf(items, item);
+  if (!iteration) return "unplanned";
+
+  const phase = iterationPhase(iteration, asOf);
+  if (phase === "active" || phase === "overdue") return "ongoing";
+  if (phase === "planned") return "planned";
+  if (phase === "closed" && !isInactive(items, item) && statusOf(items, item) !== "done") return "followUp";
+}
+
 /**
  * 迭代的范围：实际所属该迭代、且上级不属于同一迭代的工作项（每棵子树只算顶层一项）。
  * iterationId 为 null 时表示「待规划」：不属于任何迭代、且上级属于某个迭代（或上级就是项目）的项。

@@ -6,6 +6,7 @@ import { useToast } from "@/components/Toast";
 import { canUseTeam, isAdmin, visibleProjects, type Account, type MenuKey, type RoleTemplate } from "./access";
 import type { Rule } from "./alerts";
 import type { Command, CommandResult } from "./commands";
+import type { DeliveryBoardCommand } from "./delivery-board";
 import { setAppTimezone, setPeople, today, type BadCase, type DefectInput, type DeliveryCheck, type Iteration, type Status, type WorkItem } from "./model";
 import { attachmentMime } from "./attachments";
 import type { RepoLogins, RepoProvider } from "./repo-providers";
@@ -53,6 +54,7 @@ interface Store extends ClientState {
   submit: (id: string, deliverable: string, note: string, verifiers?: string[], onSuccess?: () => Promise<void>) => Result;
   verify: (id: string, pass: boolean, note: string, onSuccess?: () => Promise<void>) => Result;
   productionAction: (command: Extract<Command, { type: "publish" | "verifyProduction" | "recordReleaseIssue" }>) => Result;
+  moveDeliveryCard: (command: DeliveryBoardCommand) => Result;
   deferProgress: (id: string, until: string) => Result;
   confirmDirectDelivery: (id: string) => Result;
   postUpdate: (id: string, text: string, progress?: number, attachmentIds?: string[], mentionIds?: string[]) => Result;
@@ -261,6 +263,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return send(origin, command, undefined, command, undefined, onSuccess);
       },
       productionAction: (command) => dispatch(command),
+      moveDeliveryCard: (command) => dispatch(command),
       deferProgress: (id, until) => dispatch({ type: "deferProgress", id, until }),
       confirmDirectDelivery: (id) => dispatch({ type: "confirmDirectDelivery", id }),
       postUpdate: (id, text, progress, attachmentIds, mentionIds) => dispatch({ type: "postUpdate", id, text, progress, attachmentIds, mentionIds }),

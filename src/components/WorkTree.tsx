@@ -2,17 +2,18 @@
 
 import Link from "next/link";
 import * as Popover from "@radix-ui/react-popover";
-import { ArrowDown, ArrowUp, CalendarRange, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, GanttChart, GripVertical, List, ListFilter, Pencil, Plus, ShieldCheck, UserRound } from "lucide-react";
+import { ArrowDown, ArrowUp, CalendarRange, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns3, GanttChart, GripVertical, List, ListFilter, Pencil, Plus, ShieldCheck, UserRound } from "lucide-react";
 import { Fragment, useEffect, useEffectEvent, useMemo, useRef, useState, type PointerEvent } from "react";
 import { SelectionMotion } from "./SelectionMotion";
 import { ActionFeedback, LiquidButtonFace, useActionFeedback } from "./ActionFeedback";
 import { DraftScreenshots, useScreenshotDraft } from "./DraftScreenshots";
+import DeliveryBoard from "./DeliveryBoard";
 import WorkItemForm from "./WorkItemForm";
 import { useToast } from "./Toast";
 import { canAddChild, canEditPlan, canManage } from "@/lib/access";
 import { isAssignee, dateOffset, daysBetween, fmt, person, STATUS, statusLabel, today, type WorkItem } from "@/lib/model";
 import { useStore } from "@/lib/store";
-import { canReparentTask, verifiersOf, isInactive, needsSubmission, childrenOf, currentIteration, dueStateOf, isCheckDone, hasBlocked, iterationIdOf, levelLabel, plannedProgress, progressOf, projectOf, statusOf, visibleChecks, type Items } from "@/lib/tree";
+import { canReparentTask, verifiersOf, isInactive, needsSubmission, childrenOf, currentIteration, currentWorkGroup, dueStateOf, isCheckDone, hasBlocked, iterationIdOf, levelLabel, plannedProgress, progressOf, projectOf, statusOf, visibleChecks, type CurrentWorkGroup, type Items } from "@/lib/tree";
 import { IterationCell } from "./Iterations";
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Modal, ModalFooter, Tip } from "./kit";
 import { usePeek } from "./Peek";
@@ -51,6 +52,7 @@ type DragRow = { id: string; element: HTMLElement; top: number; height: number }
 type DragLayout = {
   rows: Row[];
   byId: Map<string, DragRow>;
+  gaps: number[];
   hits: DragRow[];
   branch: Set<string>;
   offsets: Map<DragRow, number>;
@@ -69,6 +71,12 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: "review", label: "待验收" },
   { key: "release", label: "待发布" },
 ];
+const CURRENT_WORK_GROUPS: Record<CurrentWorkGroup, string> = {
+  ongoing: "进行中的迭代",
+  unplanned: "未排迭代",
+  followUp: "待跟进",
+  planned: "未开始的迭代",
+};
 
 function flatten(items: Items, parentId: string, depth: number): Row[] {
   return childrenOf(items, parentId).flatMap((item) => {
@@ -82,6 +90,27 @@ function branchEnd(rows: Row[], start: number) {
   let end = start + 1;
   while (end < rows.length && rows[end].depth > rows[start].depth) end++;
   return end;
+}
+
+function groupCurrentRows(rows: Row[], scope: Map<string, CurrentWorkGroup>) {
+  const groups: Record<CurrentWorkGroup, Row[]> = { ongoing: [], unplanned: [], followUp: [], planned: [] };
+  const groupByRow = new Map<string, CurrentWorkGroup>();
+
+  for (let start = 0; start < rows.length;) {
+    const end = branchEnd(rows, start);
+    const branch = rows.slice(start, end);
+    // 跨迭代的子任务保留原上级，仅按整棵分支分组。
+    const group = branch.map(({ item }) => scope.get(item.id)).find((value) => value !== undefined);
+    if (group) {
+      for (const row of branch) {
+        groups[group].push(row);
+        groupByRow.set(row.item.id, group);
+      }
+    }
+    start = end;
+  }
+
+  return { rows: Object.values(groups).flat(), groupByRow };
 }
 
 function orderAtDrop(rows: Row[], sourceId: string | null, spot: DropSpot | null) {
@@ -105,13 +134,14 @@ function measureDragLayout(grid: HTMLElement, rows: Row[], sourceId: string): Dr
     height: element.offsetHeight,
   }));
   const byId = new Map(hits.map((row) => [row.id, row]));
+  const gaps = hits.map((row, index) => index === 0 ? row.top : row.top - (hits[index - 1].top + hits[index - 1].height));
   const start = rows.findIndex(({ item }) => item.id === sourceId);
   const branch = new Set(start < 0 ? [] : rows.slice(start, branchEnd(rows, start)).map(({ item }) => item.id));
   for (const id of branch) byId.get(id)?.element.setAttribute("data-drag-placeholder", "");
-  return { rows, byId, hits, branch, offsets: new Map(), transfer: null };
+  return { rows, byId, gaps, hits, branch, offsets: new Map(), transfer: null };
 }
 
-function showDropSpot(drag: DragGesture, spot: DropSpot | null) {
+function showDropSpot(drag: DragGesture, spot: DropSpot | null, previewOrder: boolean) {
   const layout = drag.layout;
   if (!layout) return;
   const destinationId = spot?.placement === "inside" ? spot.targetId : spot?.toParentId;
@@ -122,12 +152,13 @@ function showDropSpot(drag: DragGesture, spot: DropSpot | null) {
     layout.transfer = transfer;
   }
 
-  const order = orderAtDrop(layout.rows, drag.id, spot);
+  const order = previewOrder ? orderAtDrop(layout.rows, drag.id, spot) : undefined;
   const offsets = new Map<DragRow, number>();
-  let top = layout.byId.values().next().value?.top ?? 0;
-  layout.hits = (order ?? layout.rows).flatMap(({ item }) => {
+  let top = 0;
+  layout.hits = (order ?? layout.rows).flatMap(({ item }, index) => {
     const row = layout.byId.get(item.id);
     if (!row) return [];
+    top += layout.gaps[index];
     const projectedTop = order ? top : row.top;
     const offset = projectedTop - row.top;
     if (offset) offsets.set(row, offset);
@@ -203,6 +234,11 @@ function liftRow(row: HTMLElement, drag: DragGesture) {
 }
 
 const COLS = "work-tree-columns grid items-center gap-x-3";
+const WORK_VIEWS = [
+  { id: "list", label: "列表", icon: List },
+  { id: "timeline", label: "时间线", icon: GanttChart },
+  { id: "board", label: "交付看板", icon: Columns3 },
+] as const;
 
 export default function WorkTree({ rootId, startAdding = false }: { rootId: string; startAdding?: boolean }) {
   const { items, me, acc, practice, moveItem } = useStore();
@@ -217,27 +253,48 @@ export default function WorkTree({ rootId, startAdding = false }: { rootId: stri
   const [moving, setMoving] = useState(false);
   const peek = usePeek();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [view, setView] = useState<"list" | "timeline">("list");
+  const [view, setView] = useState<(typeof WORK_VIEWS)[number]["id"]>("list");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [adding, setAdding] = useState<string | null>(startAdding ? rootId : null);
   const [filterCollapsed, setFilterCollapsed] = useState<Set<string>>(new Set());
   const root = items.find((i) => i.id === rootId)!;
   const project = projectOf(items, root);
   const all = useMemo(() => flatten(items, rootId, 0), [items, rootId]);
+  const iterations = [...(project.iterations ?? [])].sort((a, b) => a.start.localeCompare(b.start));
+  const canShowCurrentWork = root.kind === "project" && iterations.length > 0 && !isInactive(items, root);
+  const defaultIter = canShowCurrentWork ? "current" : "all";
   const isMine = (item: WorkItem) => item.owner === me || isAssignee(item, me);
   const [{ filter, mineOnly, iter }, setFilters] = useState<TreeFilters>(() => ({
     ...defaultFilters,
+    iter: defaultIter,
     mineOnly: !practice && root.kind === "project" && !canManage(items, root, acc) &&
       (isAssignee(root, me) || all.some(({ item }) => isMine(item))),
   }));
-  const iterations = [...(project.iterations ?? [])].sort((a, b) => a.start.localeCompare(b.start));
-  // 迭代筛选："all" 不限；"none" 待规划；其余为迭代 ID
-  const iterLabel = iter === "none" ? "待规划" : iterations.find((i) => i.id === iter)?.name;
+  const currentWork = canShowCurrentWork && iter === "current";
+  const specificIteration = iter !== "all" && iter !== "current";
+  const selectedIteration = iterations.find((i) => i.id === iter);
+  const addToIteration = selectedIteration?.closedAt ? undefined : selectedIteration?.id;
+  const iterLabel = currentWork ? "当前工作" : iter === "none" ? "待规划" : selectedIteration?.name;
+  const asOf = today();
+  const current = currentIteration(project, asOf);
+  const iterationChoices = [
+    ...iterations.filter((i) => !i.closedAt && i.id !== current?.id),
+    ...iterations.filter((i) => i.closedAt).reverse(),
+  ];
+  const currentScope = new Map<string, CurrentWorkGroup>();
+  if (currentWork) {
+    for (const { item } of all) {
+      const group = currentWorkGroup(items, item, asOf);
+      if (group) currentScope.set(item.id, group);
+    }
+  }
 
   const itemById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
   const match = (i: WorkItem) => {
     if (mineOnly && !isMine(i)) return false;
-    if (iter !== "all" && (iterationIdOf(items, i) ?? "none") !== iter) return false;
+    if (currentWork && !currentScope.has(i.id)) return false;
+    if (specificIteration && (iterationIdOf(items, i) ?? "none") !== iter) return false;
+    if (filter === "all") return true;
     const st = statusOf(items, i);
     if (filter === "open") return st !== "done" && st !== "cancelled";
     if (filter === "overdue") return dueStateOf(items, i) === "overdue";
@@ -246,14 +303,15 @@ export default function WorkTree({ rootId, startAdding = false }: { rootId: stri
     if (filter === "review") return st === "review" || st === "production-review";
     return true;
   };
-  const filtering = mineOnly || filter !== "all" || iter !== "all";
+  const filtering = mineOnly || filter !== "all" || specificIteration;
+  const canReset = filtering || iter !== defaultIter;
   const changeFilters = (patch: Partial<TreeFilters>) => {
     setFilters((current) => ({ ...current, ...patch }));
     setFilterCollapsed(new Set());
   };
   // 从末级向上保留命中项的整条路径，筛选期间单独记录展开状态。
   let candidates = all;
-  if (filtering) {
+  if (currentWork || filtering) {
     const keep = new Set<string>();
     for (const { item } of all.toReversed()) {
       if (!keep.has(item.id) && !match(item)) continue;
@@ -262,6 +320,8 @@ export default function WorkTree({ rootId, startAdding = false }: { rootId: stri
     }
     candidates = all.filter(({ item }) => keep.has(item.id));
   }
+  const grouped = currentWork ? groupCurrentRows(candidates, currentScope) : undefined;
+  if (grouped) candidates = grouped.rows;
   const expandable = new Set(candidates.flatMap(({ item }) => item.parentId && item.parentId !== rootId ? [item.parentId] : []));
   const folded = filtering ? filterCollapsed : collapsed;
   const setFolded = filtering ? setFilterCollapsed : setCollapsed;
@@ -271,6 +331,8 @@ export default function WorkTree({ rootId, startAdding = false }: { rootId: stri
     shown.add(item.id);
     return true;
   });
+  const sameGroup = (a: string, b: string) => grouped?.groupByRow.get(a) === grouped?.groupByRow.get(b);
+  const emptyMessage = filtering ? "没有符合筛选条件的项" : currentWork && all.length ? "暂无当前工作" : "还没有拆分内容";
 
   const toggle = (id: string) =>
     setFolded((current) => {
@@ -322,7 +384,7 @@ export default function WorkTree({ rootId, startAdding = false }: { rootId: stri
       return { targetId: target.id, placement: "inside" };
     }
     const placement = ratio < 0.5 ? "before" : "after";
-    if (target.parentId === drag.fromParentId) return { targetId: target.id, placement };
+    if (target.parentId === drag.fromParentId) return sameGroup(drag.id, target.id) ? { targetId: target.id, placement } : null;
 
     const destination = target.parentId ? itemById.get(target.parentId) : undefined;
     return destination && canReparentTask(items, item, destination)
@@ -335,7 +397,7 @@ export default function WorkTree({ rootId, startAdding = false }: { rootId: stri
     if (drag.spot?.targetId === spot?.targetId && drag.spot?.placement === spot?.placement &&
         drag.spot?.toParentId === spot?.toParentId) return;
     drag.spot = spot;
-    showDropSpot(drag, spot);
+    showDropSpot(drag, spot, spot !== null && sameGroup(drag.id, spot.targetId));
   });
 
   useEffect(() => {
@@ -480,12 +542,11 @@ export default function WorkTree({ rootId, startAdding = false }: { rootId: stri
     <div>
       <div className="mb-2 flex flex-wrap items-center gap-1.5">
         <SelectionMotion value={view} className="selection-segment flex rounded-md bg-sunken p-0.5" role="group" aria-label="任务视图">
-          {(["list", "timeline"] as const).map((v) => {
-            const I = v === "list" ? List : GanttChart;
+          {WORK_VIEWS.map(({ id: v, label, icon: Icon }) => {
             return (
               <button key={v} aria-pressed={view === v} data-selection-value={v} onClick={() => setView(v)} className={cx("flex h-6 items-center gap-1 rounded px-2 text-xs transition-colors", view === v ? "text-fg" : "text-fg-3 hover:text-fg")}>
-                <I className="h-3.5 w-3.5" />
-                {v === "list" ? "列表" : "时间线"}
+                <Icon className="h-3.5 w-3.5" />
+                {label}
               </button>
             );
           })}
@@ -504,23 +565,24 @@ export default function WorkTree({ rootId, startAdding = false }: { rootId: stri
         {iterations.length > 0 && (
           <Menu>
             <MenuTrigger className={cx(btnGhost, sm, iter !== "all" && "bg-accent-soft text-accent-fg hover:bg-accent-soft")}>
-              <CalendarRange />{iterLabel ?? "迭代"}
+              <CalendarRange />{iterLabel ?? (canShowCurrentWork ? "全部任务" : "迭代")}
             </MenuTrigger>
             <MenuContent>
-              <MenuLabel>按迭代</MenuLabel>
-              <MenuItem checked={iter === "all"} onSelect={() => changeFilters({ iter: "all" })}>全部</MenuItem>
-              {currentIteration(project) && <MenuItem checked={iter === currentIteration(project)!.id} hint="当前" onSelect={() => changeFilters({ iter: currentIteration(project)!.id })}>{currentIteration(project)!.name}</MenuItem>}
-              {iterations.filter((i) => i.id !== currentIteration(project)?.id).map((i) => <MenuItem key={i.id} checked={iter === i.id} hint={i.closedAt ? "已结束" : undefined} onSelect={() => changeFilters({ iter: i.id })}>{i.name}</MenuItem>)}
-              <MenuSeparator />
+              {canShowCurrentWork && <MenuItem checked={currentWork} onSelect={() => changeFilters({ iter: "current" })}>当前工作</MenuItem>}
+              <MenuItem checked={iter === "all"} onSelect={() => changeFilters({ iter: "all" })}>全部任务</MenuItem>
               <MenuItem checked={iter === "none"} onSelect={() => changeFilters({ iter: "none" })}>待规划</MenuItem>
+              <MenuSeparator />
+              <MenuLabel>按迭代</MenuLabel>
+              {current && <MenuItem checked={iter === current.id} hint={current.start <= asOf ? "当前" : "未开始"} onSelect={() => changeFilters({ iter: current.id })}>{current.name}</MenuItem>}
+              {iterationChoices.map((i) => <MenuItem key={i.id} checked={iter === i.id} hint={i.closedAt ? "已结束" : undefined} onSelect={() => changeFilters({ iter: i.id })}>{i.name}</MenuItem>)}
             </MenuContent>
           </Menu>
         )}
         <button type="button" aria-pressed={mineOnly} onClick={() => changeFilters({ mineOnly: !mineOnly })} className={cx(btnGhost, sm, mineOnly && "bg-accent-soft text-accent-fg hover:bg-accent-soft")}>
           <Avatar id={me} size={4} />我的
         </button>
-        {filtering && <button type="button" onClick={() => changeFilters(defaultFilters)} className={cx(btnGhost, sm)}>清除筛选</button>}
-        {expandable.size > 0 && (
+        {canReset && <button type="button" onClick={() => changeFilters({ ...defaultFilters, iter: defaultIter })} className={cx(btnGhost, sm)}>清除筛选</button>}
+        {view !== "board" && expandable.size > 0 && (
           <>
             <Tip content="全部展开"><button aria-label="全部展开" className={iconBtn} onClick={() => setFolded(new Set())}><ChevronsUpDown /></button></Tip>
             <Tip content="全部收起"><button aria-label="全部收起" className={iconBtn} onClick={() => setFolded(new Set(expandable))}><ChevronsDownUp /></button></Tip>
@@ -565,7 +627,9 @@ export default function WorkTree({ rootId, startAdding = false }: { rootId: stri
       )}
       {editing && <WorkItemForm key={editing.id} item={editing} onDone={() => setEditingId(null)} />}
       <div className="overflow-hidden rounded-lg border border-line">
-        {view === "list" ? (
+        {view === "board" ? (
+          <DeliveryBoard cards={all.map(({ item }) => item).filter(match)} />
+        ) : view === "list" ? (
           <div ref={treeGrid} role="treegrid" aria-label="工作项" className="@container relative flex flex-col text-[13px]">
             <div className={cx(columns, "relative h-8 border-b border-line bg-canvas text-xs text-fg-4")}>
               {orderEnabled && <span className="absolute inset-y-0 left-2 flex w-7 items-center justify-center text-[11px]" title="拖动每行左侧手柄调整顺序">排序</span>}
@@ -577,16 +641,16 @@ export default function WorkTree({ rootId, startAdding = false }: { rootId: stri
               <span className="hidden @3xl:block">{showChecks && "检查"}</span>
               <span />
             </div>
-            {adding === rootId && <AddRow columns={columns} hasIteration={iterations.length > 0} parentId={rootId} depth={0} iteration={iterations.find((i) => i.id === iter && !i.closedAt)?.id} onClose={() => setAdding(null)} />}
+            {adding === rootId && <AddRow columns={columns} hasIteration={iterations.length > 0} parentId={rootId} depth={0} iteration={addToIteration} onClose={() => setAdding(null)} />}
             {rows.length === 0 && adding !== rootId && (
               <div className="px-4 py-12 text-center">
-                <div className="text-[13px] text-fg-3">{filtering ? "没有符合筛选条件的项" : "还没有拆分内容"}</div>
-                {!filtering && canAddUnder(root) && (
+                <div className="text-[13px] text-fg-3">{emptyMessage}</div>
+                {!filtering && all.length === 0 && canAddUnder(root) && (
                   <button data-guide="add-first" onClick={() => setAdding(rootId)} className={cx(btn, "mt-3")}><Plus />添加第一项</button>
                 )}
               </div>
             )}
-            {rows.map(({ item, depth, hasKids }) => {
+            {rows.map(({ item, depth, hasKids }, rowIndex) => {
               const st = statusOf(items, item);
               const cl = visibleChecks(items, item);
               const overdue = dueStateOf(items, item) === "overdue";
@@ -595,10 +659,18 @@ export default function WorkTree({ rootId, startAdding = false }: { rootId: stri
               const source = sorting && item.parentId && !isInactive(items, item) ? { id: item.id, fromParentId: item.parentId } : null;
               const siblings = source ? childrenOf(items, source.fromParentId) : [];
               const index = siblings.findIndex((i) => i.id === item.id);
-              const previous = index > 0 ? siblings.slice(0, index).findLast((s) => !isInactive(items, s)) : undefined;
-              const next = index >= 0 ? siblings.slice(index + 1).find((s) => !isInactive(items, s)) : undefined;
+              const canMoveBeside = (sibling: WorkItem) => shown.has(sibling.id) && sameGroup(item.id, sibling.id) && !isInactive(items, sibling);
+              const previous = index > 0 ? siblings.slice(0, index).findLast(canMoveBeside) : undefined;
+              const next = index >= 0 ? siblings.slice(index + 1).find(canMoveBeside) : undefined;
+              const group = grouped?.groupByRow.get(item.id);
               return (
                 <Fragment key={item.id}>
+                  {group && (rowIndex === 0 || grouped?.groupByRow.get(rows[rowIndex - 1].item.id) !== group) && (
+                    <div role="row" style={orderPreview ? { order: rowIndex + 1 } : undefined}
+                      className="border-b border-line bg-canvas px-3 py-1.5 text-xs font-medium text-fg-3">
+                      <span role="gridcell">{CURRENT_WORK_GROUPS[group]}</span>
+                    </div>
+                  )}
                   <div
                     role="row"
                     aria-selected={active}
@@ -674,7 +746,7 @@ export default function WorkTree({ rootId, startAdding = false }: { rootId: stri
                         <span className={cx("text-xs", overdue ? "text-danger" : "text-fg-3")}>{st === "done" ? "" : relDue(item.due)}</span>
                       </span>
                     </div>
-                    {iterations.length > 0 && <div className="work-tree-iteration min-w-0"><IterationCell item={item} compact /></div>}
+                    {iterations.length > 0 && <div className="work-tree-iteration min-w-0"><IterationCell item={item} compact showUnplanned={currentWork && group !== "unplanned"} /></div>}
                     <div className="hidden min-w-0 @3xl:block"><PersonCell item={item} /></div>
                     <div className="hidden @3xl:block"><DueCell item={item} /></div>
                     <div className="hidden @3xl:block"><Progress value={progressOf(items, item)} plan={hasKids ? plannedProgress(item) : undefined} width="w-12" /></div>
@@ -692,7 +764,7 @@ export default function WorkTree({ rootId, startAdding = false }: { rootId: stri
                       )}
                     </div>
                   </div>
-                  {adding === item.id && <AddRow columns={columns} hasIteration={iterations.length > 0} parentId={item.id} depth={depth + 1} iteration={iterations.find((i) => i.id === iter && !i.closedAt)?.id} onClose={() => setAdding(null)} />}
+                  {adding === item.id && <AddRow columns={columns} hasIteration={iterations.length > 0} parentId={item.id} depth={depth + 1} iteration={addToIteration} onClose={() => setAdding(null)} />}
                 </Fragment>
               );
             })}
@@ -701,7 +773,7 @@ export default function WorkTree({ rootId, startAdding = false }: { rootId: stri
           rows.length > 0 ? (
             <Timeline items={items} root={root} candidates={candidates} rows={rows}
               collapsed={folded} expandable={expandable} toggle={toggle} onOpen={peek.open} />
-          ) : <Empty>{filtering ? "没有符合筛选条件的项" : "还没有拆分内容"}</Empty>
+          ) : <Empty>{emptyMessage}</Empty>
         )}
       </div>
     </div>

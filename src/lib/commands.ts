@@ -51,6 +51,10 @@ const defectInput = z.object({
   severity: z.enum(DEFECT_SEVERITIES), foundAt: z.enum(DEFECT_STAGES),
   owner: id, attachmentIds: z.array(id).max(10).optional(),
 }).strict();
+const expectedDelivery = z.object({
+  status: z.enum(["todo", "doing", "blocked", "review", "release", "production-review", "done", "cancelled"]),
+  reviewToken: id.nullable(),
+}).strict().optional();
 export const commandSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("uploadAttachment"), id, name: z.string().min(1).max(255), mime: z.string().min(1).max(150), size: z.number().int().positive().max(10485760), purpose: z.literal("item-screenshot").optional() }).strict(),
   z.object({ type: z.literal("restore"), id, reason: z.string().trim().min(1).max(2000) }).strict(),
@@ -68,9 +72,9 @@ export const commandSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("saveIteration"), id, iterationId: id.optional(), iteration: iterationInput }).strict(),
   z.object({ type: z.literal("deleteIteration"), id, iterationId: id }).strict(),
   z.object({ type: z.literal("closeIteration"), id, iterationId: id, moveTo: id.nullable() }).strict(),
-  z.object({ type: z.literal("setStatus"), id, status: z.enum(["todo", "doing", "done", "blocked"]), reason: text.optional() }).strict(),
-  z.object({ type: z.literal("submit"), id, deliverable: z.string().trim().min(1).max(2000), note: text, verifiers: ids.optional() }).strict(),
-  z.object({ type: z.literal("verify"), id, pass: z.boolean(), note: text }).strict(),
+  z.object({ type: z.literal("setStatus"), id, status: z.enum(["todo", "doing", "done", "blocked"]), reason: text.optional(), expectedDelivery }).strict(),
+  z.object({ type: z.literal("submit"), id, deliverable: z.string().trim().min(1).max(2000), note: text, verifiers: ids.optional(), expectedDelivery }).strict(),
+  z.object({ type: z.literal("verify"), id, pass: z.boolean(), note: text, expectedDelivery }).strict(),
   z.object({ type: z.literal("publish"), id, cycle: id, version: z.string().trim().min(1).max(2000) }).strict(),
   z.object({ type: z.literal("recordReleaseIssue"), id, cycle: id, publicationId: id.nullable(), note: z.string().trim().min(1).max(2000) }).strict(),
   z.object({ type: z.literal("verifyProduction"), id, publicationId: id, pass: z.boolean(), note: z.string().trim().max(2000) }).strict(),
@@ -146,6 +150,13 @@ export function applyCommand(input: AppState, ctx: CommandContext, raw: unknown)
     requireThat(!isInactive(state.items, x), "工作项已取消或项目已归档，不能修改", 400);
     return x;
   };
+  if ("expectedDelivery" in cmd && cmd.expectedDelivery) {
+    const item = get(cmd.id);
+    const from = cmd.expectedDelivery;
+    requireThat(statusOf(state.items, item) === from.status &&
+      (from.status !== "review" || (item.reviewToken ?? null) === from.reviewToken),
+    "交付状态已变化，请刷新后再移动", 409);
+  }
   const manage = (x: WorkItem) => requireThat(canManage(state.items, x, acc), "只有项目负责人或管理员能管理项目计划");
   const doer = (x: WorkItem) => requireThat(isAssignee(x, acc.id) || canManage(state.items, x, acc), "只有执行人或可管理者能修改进度和状态");
   const quality = () => requireThat(acc.menus.includes("quality"), "需要质量中心权限");

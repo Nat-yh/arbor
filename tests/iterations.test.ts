@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyCommand, type Command } from "../src/lib/commands";
 import { demoState } from "../src/lib/demo";
 import type { AppState } from "../src/lib/state";
-import { BACKLOG, currentIteration, doneInIteration, iterationIdOf, iterationScope, iterationStats } from "../src/lib/tree";
+import { BACKLOG, currentIteration, currentWorkGroup, doneInIteration, iterationIdOf, iterationScope, iterationStats } from "../src/lib/tree";
 
 let state: AppState;
 let sequence = 0;
@@ -22,6 +22,31 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllEnvs(); });
 
 describe("迭代", () => {
+  it("当前工作展示未排迭代、待跟进和已排期任务", () => {
+    project().iterations = [
+      { id: "past", name: "已结束", start: "2026-10-01", end: "2026-10-15", closedAt: "2026-10-15" },
+      { id: "overdue", name: "到期未结束", start: "2026-10-16", end: "2026-10-31" },
+      { id: "active", name: "进行中", start: "2026-11-01", end: "2026-11-14" },
+      { id: "future", name: "未开始", start: "2026-11-15", end: "2026-11-28" },
+    ];
+    const asOf = "2026-11-06";
+    const done = { ...get("T1"), status: "done" as const };
+    const reopened = { ...done, status: "doing" as const, iteration: "past" };
+    get("F1").iteration = "active";
+
+    expect(currentWorkGroup(state.items, done, asOf)).toBe("ongoing");
+    expect(currentWorkGroup(state.items, { ...done, iteration: BACKLOG }, asOf)).toBe("unplanned");
+    expect(currentWorkGroup(state.items, { ...done, iteration: "overdue" }, asOf)).toBe("ongoing");
+    expect(currentWorkGroup(state.items, { ...done, iteration: "past" }, asOf)).toBeUndefined();
+    const scheduled = { ...reopened, iteration: "future" };
+    expect(currentWorkGroup(state.items, scheduled, asOf)).toBe("planned");
+    expect(currentWorkGroup(state.items, scheduled, "2026-11-15")).toBe("ongoing");
+    expect(currentWorkGroup(state.items, reopened, asOf)).toBe("followUp");
+    expect(currentWorkGroup(state.items, { ...reopened, status: "cancelled" }, asOf)).toBeUndefined();
+    get("F1").iteration = undefined;
+    expect(currentWorkGroup(state.items, done, asOf)).toBe("unplanned");
+  });
+
   it("只有项目负责人或管理员能新建，名称不能重复，结束不能早于开始", () => {
     expect(() => run({ type: "saveIteration", id: "P1", iteration: { name: "V2.1", start: "2026-11-01", end: "2026-11-14" } }, "zhouhang")).toThrow("项目负责人");
     const id = create("V2.1", "2026-11-01", "2026-11-14");
