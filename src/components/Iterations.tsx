@@ -44,7 +44,7 @@ function nextName(last?: string) {
 // ───────── 工作项上的迭代胶囊：显示 + 就地修改 ─────────
 
 /** 迭代胶囊：显示实际所属迭代（沿用上级的显示为浅色），可管理者点击改归属 */
-export function IterationCell({ item, compact }: { item: WorkItem; compact?: boolean }) {
+export function IterationCell({ item, compact, showUnplanned }: { item: WorkItem; compact?: boolean; showUnplanned?: boolean }) {
   const { items, acc, edit } = useStore();
   const toast = useToast();
   const project = projectOf(items, item);
@@ -55,7 +55,7 @@ export function IterationCell({ item, compact }: { item: WorkItem; compact?: boo
   const editable = !isInactive(items, item) && canEditPlan(items, item, acc);
   const label = it ? it.name : "待规划";
   const chipClass = cx("inline-flex h-6 max-w-[min(100%,8rem)] items-center gap-1 rounded-md px-1.5 text-xs align-middle",
-    it ? (inherited ? "text-fg-3" : "text-fg-2") : "text-fg-4", compact && !it && "work-tree-unplanned");
+    it ? (inherited ? "text-fg-3" : "text-fg-2") : "text-fg-4", compact && !it && !showUnplanned && "work-tree-unplanned");
   const chip = (
     <>
       <CalendarRange className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{label}</span>
